@@ -1,0 +1,39 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  relationMode = "prisma"
+}
+
+model Post {
+  id        String  @id @unique @default(uuid())
+  text      String
+  image_id  String?
+  video_id  String?
+  image     File?   @relation(fields: [image_id], references: [id], "image")
+  video     File?   @relation(fields: [video_id], references: [id], "video")
+  isHarmful Boolean @default(false)
+}
+
+model File {
+  id             String  @id @unique @default(uuid())
+  file           Bytes
+  size           Float
+  mimeType       String
+  posts_as_image Post[]  @relation("image")
+  posts_as_video Post[]  @relation("video")
+}
+
+model Admins {
+  id         String @id @unique @default(uuid())
+  telegramId String
+}
