@@ -11,17 +11,21 @@ import {
 import { AppService } from './app.service';
 import { IPost } from './entity/post.entity';
 import { FileInterceptor } from '@nestjs/platform-express';
-
+import * as sharp from 'sharp';
 import { Response } from 'express';
 
 @Controller()
 export class AppController {
   constructor(private readonly appService: AppService) {}
 
+  @Get('/')
+  async getAll() {
+    return await this.appService.getAllPosts();
+  }
+
   @Get('/image/:id')
   async getImage(@Param('id') id: string, @Res() res: Response) {
     const file = await this.appService.getFile(id);
-
     res.set({
       'Content-Type': file.mimeType,
       'Content-Length': file.size,
@@ -37,15 +41,23 @@ export class AppController {
   @Post('upload')
   @UseInterceptors(FileInterceptor('file'))
   async uploadFile(@UploadedFile() file: Express.Multer.File) {
-    const files: any = {
-      file: Buffer.from(file.buffer),
-      size: file.size,
-      mimeType: file.mimetype,
-    };
+    let convertedBuffer = file.buffer;
+    let convertedMimeType = file.mimetype;
 
-    const isImage = file.mimetype.includes('image');
+    // Check if file is an image and not in JPG format
+    if (file.mimetype.includes('image') && !file.mimetype.includes('jpeg')) {
+      // Convert to JPG format using sharp
+      convertedBuffer = await sharp(file.buffer).jpeg().toBuffer();
+      convertedMimeType = 'image/jpeg';
+    }
+
+    const files: any = {
+      file: Buffer.from(convertedBuffer),
+      size: file.size,
+      mimeType: convertedMimeType,
+    };
+    const isImage = convertedMimeType.includes('image');
 
     return await this.appService.uploadFile(files, isImage ? 'image' : 'video');
-    // return Buffer.from(file.buffer);
   }
 }

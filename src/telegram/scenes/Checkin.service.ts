@@ -22,12 +22,15 @@ export class CheckIn {
 
   private async userReply(post: any, ctx: WizardContext) {
     if (post.image_id) {
-      await ctx.replyWithPhoto(`http://localhost:3000/image/${post.image_id}`, {
-        caption: post.text,
-        reply_markup: {
-          inline_keyboard: buttons,
+      await ctx.replyWithPhoto(
+        { url: `http://localhost:8080/api/image/${post.image_id}` },
+        {
+          caption: post.text,
+          reply_markup: {
+            inline_keyboard: buttons,
+          },
         },
-      });
+      );
     } else if (post.video_id) {
       await ctx.replyWithDocument(
         `http://localhost:3000/video/${post.video_id}`,
@@ -57,6 +60,8 @@ export class CheckIn {
 
     ctx.wizard.state['currentPost'] = post?.id;
 
+    ctx.wizard.state['previousPostIds'] = [post?.id];
+
     await this.userReply(post, ctx);
   }
 
@@ -83,17 +88,24 @@ export class CheckIn {
 
   @Action('ban')
   async ban(@Ctx() ctx: WizardContext) {
+    ctx.answerCbQuery();
+
+    const prevIds: string[] = ctx.wizard.state['previousPostIds'];
+
     const currentPostId = ctx.wizard.state['currentPost'];
     await this.updatePostState(currentPostId, true);
 
     const post = await this.prisma.post.findFirst({
       where: {
         isHarmful: true,
+        id: {
+          notIn: [...prevIds, currentPostId],
+        },
       },
     });
     if (post) {
       ctx.wizard.state['currentPost'] = post?.id;
-
+      ctx.wizard.state['previousPostIds'] = [...prevIds, currentPostId];
       await this.userReply(post, ctx);
     } else {
       await ctx.scene.leave();
