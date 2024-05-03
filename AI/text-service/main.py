@@ -7,6 +7,10 @@ import tensorflow as tf
 import requests
 from io import BytesIO
 from text_classifier.classifier import retrain
+from video_classifier.classifier import classify
+import os
+import whisper
+from moviepy.editor import VideoFileClip
 
 
 tfidf_vectorizer = load("tfidf_vectorizer.joblib") 
@@ -21,11 +25,43 @@ custom_objects = {
 }
 loaded_model_image = tf.keras.models.load_model('image_classifier.h5', custom_objects=custom_objects)
 
+model_whisp = whisper.load_model("base")
 
+def extract_text(model, audio_path:str):
+  result = model.transcribe(audio_path)
+  text = result['text']
+  print(text)
+  new_X = tfidf_vectorizer.transform([text.lower()])
+
+  prediction = loaded_model.predict(new_X)
+  prediction_label = bool(prediction[0])
+  print(prediction_label)
+  return prediction_label
+
+
+
+def download_video(video_url, save_path):
+    response = requests.get(video_url)
+    if response.status_code == 200:
+        with open(save_path, 'wb') as f:
+            f.write(response.content)
+        return True
+    else:
+        return False
 
 app = Flask(__name__)
 
 loaded_model = load('text_classifier.joblib')
+
+def extract_audio(video_path, audio_path):
+    try:
+        clip = VideoFileClip(video_path)
+        audio = clip.audio
+        audio.write_audiofile(audio_path, codec='libvorbis')
+        return True
+    except Exception as e:
+        print(f"Failed to extract audio: {e}")
+        return False
 
 @app.route('/classify', methods=['POST'])
 def classify_text():
@@ -88,6 +124,34 @@ def cron_retrain():
 
     resp = retrain(text_data, banned_list)
     return resp
+
+@app.route('/video', methods=["POST"])
+def classify_video():
+    data = request.get_json()
+    video_url = data['video']
+
+    video_path = 'temp_video.mp4'
+    audio_path = 'audio.ogg'
+
+    if download_video(video_url, video_path):
+        extract_audio('temp_video.mp4', audio_path)
+        is_text_harmful = extract_text(model_whisp, audio_path)
+
+        is_video_good = classify(video_path, loaded_model_image)
+
+        isNotHarmful = True
+
+        if is_text_harmful or not is_video_good:
+            isNotHarmful = False
+        
+
+        os.remove(video_path)
+        os.remove(audio_path)
+        return jsonify({"result": isNotHarmful})
+    else:
+        return jsonify({"error": "Failed to download video"})
+
+
 
 if __name__ == '__main__':
     app.run(debug=True)

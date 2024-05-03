@@ -5,10 +5,12 @@ import { IPost } from './entity/post.entity';
 import { PrismaService } from './prisma/prisma.service';
 import { Cron } from '@nestjs/schedule';
 
-const TEXT_CLASSIFIER_MODEL = 'http://localhost:5000/classify';
-const IMAGE_CLASSIFIER_MODEL = 'http://localhost:5000/predict';
-const RETRAIN_MODEL = 'http://localhost:5000/retrain';
+const serviceApi = 'http://localhost:5000';
 
+const TEXT_CLASSIFIER_MODEL = `${serviceApi}/classify`;
+const IMAGE_CLASSIFIER_MODEL = `${serviceApi}/predict`;
+const RETRAIN_MODEL = `${serviceApi}/retrain`;
+const VIDEO_DETECT_MODEL = `${serviceApi}/video`;
 @Injectable()
 export class AppService {
   constructor(private readonly prisma: PrismaService) {}
@@ -50,20 +52,39 @@ export class AppService {
         }).then((res) => res.json());
       }
 
+      if (payload.video) {
+        requests['video'] = fetch(VIDEO_DETECT_MODEL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            video: payload.video as string,
+          }),
+        }).then((res) => res.json());
+      }
+
       forkJoin(requests).subscribe(
         async (data) => {
           let isHarmful = false;
 
           if (data?.text?.result) isHarmful = true;
-          console.log(data);
           //@ts-ignore
           if (payload.image && data?.image?.normal === false) isHarmful = true;
-
-          const { image, ...insertData } = payload;
+          //@ts-ignore
+          if (payload?.video && !data?.video?.result) isHarmful = true;
+          const { image, video, ...insertData } = payload;
 
           if (image) {
             insertData['image_id'] = (payload.image as string).replace(
               'http://localhost:8080/api/image/',
+              '',
+            );
+          }
+
+          if (video) {
+            insertData['video_id'] = (payload.video as string).replace(
+              'http://localhost:8080/api/video/',
               '',
             );
           }
@@ -102,8 +123,7 @@ export class AppService {
     });
   }
 
-  @Cron('0 0 0 ? * * *')
-  async retrain() {
+  private async retrain() {
     const banList = await this.prisma.ban_Word.findMany();
     const textData = await this.prisma.post.findMany({
       select: {
@@ -123,5 +143,10 @@ export class AppService {
     }).then((res) => res.json());
 
     this.logger.debug('Retrain execution', response);
+  }
+
+  @Cron('0 0 0 * * *')
+  async cron() {
+    await this.retrain();
   }
 }
