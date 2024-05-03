@@ -1,7 +1,7 @@
 # compiled output
 /dist
 /node_modules
-
+/AI/text-service/__pycache__/*
 # Logs
 logs
 *.log

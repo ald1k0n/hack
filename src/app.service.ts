@@ -1,62 +1,26 @@
-import { Injectable, NotAcceptableException } from '@nestjs/common';
+import { Injectable, NotAcceptableException, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { forkJoin } from 'rxjs';
 import { IPost } from './entity/post.entity';
 import { PrismaService } from './prisma/prisma.service';
+import { Cron } from '@nestjs/schedule';
 
-const TEXT_CLASSIFIER_MODEL = 'http://localhost:5000/classify';
-const IMAGE_CLASSIFIER_MODEL = 'http://localhost:5000/predict';
+const serviceApi = 'http://localhost:5000';
 
+const TEXT_CLASSIFIER_MODEL = `${serviceApi}/classify`;
+const IMAGE_CLASSIFIER_MODEL = `${serviceApi}/predict`;
+const RETRAIN_MODEL = `${serviceApi}/retrain`;
+const VIDEO_DETECT_MODEL = `${serviceApi}/video`;
 @Injectable()
 export class AppService {
   constructor(private readonly prisma: PrismaService) {}
-
+  private logger = new Logger();
   private async insertData(payload: Prisma.PostCreateInput) {
     const post = await this.prisma.post.create({
       data: payload,
     });
     return post;
   }
-
-  // async createPost(payload: IPost) {
-  //   return new Promise((resolve, reject) => {
-  //     forkJoin({
-  //       image: fetch(IMAGE_CLASSIFIER_MODEL, {
-  //         method: 'POST',
-  //         headers: {
-  //           'Content-Type': 'application/json',
-  //         },
-  //         body: JSON.stringify({ image: payload?.image as string }),
-  //       }).then((res) => res.json()),
-  //       text: fetch(TEXT_CLASSIFIER_MODEL, {
-  //         method: 'POST',
-  //         headers: {
-  //           'Content-Type': 'application/json',
-  //         },
-  //         body: JSON.stringify({ text: payload.text }),
-  //       }).then((res) => res.json()),
-  //     }).subscribe(
-  //       async (data) => {
-  //         let isHarmful = false;
-
-  //         if (data?.image?.normal) isHarmful = false;
-  //         if (data?.text?.result) isHarmful = true;
-  //         //@ts-ignore
-  //         await this.insertData({ ...payload, isHarmful });
-
-  //         if (isHarmful) {
-  //           resolve({
-  //             message:
-  //               'Контент является не допустимым для публикации, ваш пост будет проверен администрацией платформы',
-  //           });
-  //         } else {
-  //           resolve(data);
-  //         }
-  //       },
-  //       (error) => reject(error),
-  //     );
-  //   });
-  // }
 
   async createPost(payload: IPost) {
     if (!payload.text)
@@ -88,20 +52,39 @@ export class AppService {
         }).then((res) => res.json());
       }
 
+      if (payload.video) {
+        requests['video'] = fetch(VIDEO_DETECT_MODEL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            video: payload.video as string,
+          }),
+        }).then((res) => res.json());
+      }
+
       forkJoin(requests).subscribe(
         async (data) => {
           let isHarmful = false;
 
           if (data?.text?.result) isHarmful = true;
-
           //@ts-ignore
           if (payload.image && data?.image?.normal === false) isHarmful = true;
-
-          const { image, ...insertData } = payload;
+          //@ts-ignore
+          if (payload?.video && !data?.video?.result) isHarmful = true;
+          const { image, video, ...insertData } = payload;
 
           if (image) {
             insertData['image_id'] = (payload.image as string).replace(
               'http://localhost:8080/api/image/',
+              '',
+            );
+          }
+
+          if (video) {
+            insertData['video_id'] = (payload.video as string).replace(
+              'http://localhost:8080/api/video/',
               '',
             );
           }
@@ -138,5 +121,32 @@ export class AppService {
         isHarmful: false,
       },
     });
+  }
+
+  private async retrain() {
+    const banList = await this.prisma.ban_Word.findMany();
+    const textData = await this.prisma.post.findMany({
+      select: {
+        text: true,
+      },
+    });
+
+    const response = await fetch(RETRAIN_MODEL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text_data: textData,
+        banned_list: banList,
+      }),
+    }).then((res) => res.json());
+
+    this.logger.debug('Retrain execution', response);
+  }
+
+  @Cron('0 0 0 * * *')
+  async cron() {
+    await this.retrain();
   }
 }

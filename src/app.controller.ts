@@ -18,21 +18,6 @@ import { Response } from 'express';
 export class AppController {
   constructor(private readonly appService: AppService) {}
 
-  @Get('/')
-  async getAll() {
-    return await this.appService.getAllPosts();
-  }
-
-  @Get('/image/:id')
-  async getImage(@Param('id') id: string, @Res() res: Response) {
-    const file = await this.appService.getFile(id);
-    res.set({
-      'Content-Type': file.mimeType,
-      'Content-Length': file.size,
-    });
-    res.send(file.file);
-  }
-
   @Post('/create')
   async createPost(@Body() body: IPost) {
     return await this.appService.createPost(body);
@@ -59,5 +44,30 @@ export class AppController {
     const isImage = convertedMimeType.includes('image');
 
     return await this.appService.uploadFile(files, isImage ? 'image' : 'video');
+  }
+
+  @Get('/')
+  async getAll() {
+    return await this.appService.getAllPosts();
+  }
+
+  @Get('/image/:id')
+  async getImage(@Param('id') id: string, @Res() res: Response) {
+    const file = await this.appService.getFile(id);
+    res.set({
+      'Content-Type': file.mimeType,
+      'Content-Length': file.size,
+    });
+    res.send(file.file);
+  }
+
+  @Get('/video/:id')
+  async getVideo(@Param('id') id: string, @Res() res: Response) {
+    const file = await this.appService.getFile(id);
+    res.set({
+      'Content-Type': file.mimeType,
+      'Content-Length': file.size,
+    });
+    res.send(file.file);
   }
 }

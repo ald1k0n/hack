@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Ctx, Wizard, WizardStep, Action } from 'nestjs-telegraf';
+import { Ctx, Wizard, WizardStep, Action, Message, On } from 'nestjs-telegraf';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { InlineKeyboardButton } from 'telegraf/typings/core/types/typegram';
 import { WizardContext } from 'telegraf/typings/scenes';
@@ -8,6 +8,10 @@ const buttons: InlineKeyboardButton[][] = [
   [
     { text: 'Ошибочный', callback_data: 'mistaken' },
     { text: 'Заблокировать', callback_data: 'ban' },
+    {
+      text: 'Добавить слово/слова',
+      callback_data: 'word_ban',
+    },
   ],
 ];
 
@@ -32,8 +36,8 @@ export class CheckIn {
         },
       );
     } else if (post.video_id) {
-      await ctx.replyWithDocument(
-        `http://localhost:3000/video/${post.video_id}`,
+      await ctx.replyWithVideo(
+        { url: `http://localhost:8080/api/video/${post.video_id}` },
         {
           caption: post.text,
           reply_markup: {
@@ -110,5 +114,30 @@ export class CheckIn {
     } else {
       await ctx.scene.leave();
     }
+  }
+
+  @Action('word_ban')
+  async wordBan(@Ctx() ctx: WizardContext) {
+    await ctx.answerCbQuery();
+    ctx.wizard.state['is_word_ban'] = true;
+    await ctx.reply('Введите слово/слова которые хотите добавить в бан лист');
+  }
+
+  @On('message')
+  async getBanList(
+    @Ctx() ctx: WizardContext,
+    @Message('text') message: string,
+  ) {
+    if (ctx.wizard.state['is_word_ban']) {
+      const payload = message.split(',')?.map((m) => ({
+        word: m?.toLowerCase(),
+      }));
+
+      await this.prisma.ban_Word.createMany({ data: payload });
+    }
+    await ctx.reply('Ваше слова успешно добавленны в лист');
+    ctx.wizard.state['is_word_ban'] = false;
+
+    ctx.scene.leave();
   }
 }

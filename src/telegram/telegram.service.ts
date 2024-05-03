@@ -1,15 +1,4 @@
-import {
-  Update,
-  Ctx,
-  Start,
-  Help,
-  On,
-  Hears,
-  Scene,
-  SceneEnter,
-  Action,
-  Next,
-} from 'nestjs-telegraf';
+import { Update, Ctx, Start, On, Action } from 'nestjs-telegraf';
 import { PrismaService } from 'src/prisma/prisma.service';
 
 import { Context } from 'telegraf';
