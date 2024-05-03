@@ -6,6 +6,7 @@ import numpy as np
 import tensorflow as tf
 import requests
 from io import BytesIO
+from text_classifier.classifier import retrain
 
 
 tfidf_vectorizer = load("tfidf_vectorizer.joblib") 
@@ -79,6 +80,14 @@ def test():
 
     return jsonify({"confidence": confidence, "class_name": class_name, "normal": normal})
 
+@app.route('/retrain', methods=["POST"])
+def cron_retrain():
+    data = request.get_json()
+    banned_list = data['banned_list']
+    text_data = data['text_data']
+
+    resp = retrain(text_data, banned_list)
+    return resp
 
 if __name__ == '__main__':
     app.run(debug=True)
